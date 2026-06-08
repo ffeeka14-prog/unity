@@ -1,0 +1,6 @@
+{
+  "name": "石大铁大 3D Unity 交互设计助手",
+  "description": "制作石家庄铁道大学校建筑三维交互程序的 Unity / 团结引擎辅助系统。内置 3D 校园沙盘演示、四套专业 C# 交互摄像机与物理控制脚本、以及针对 3ds Max 建模到团结引擎导出的全方位 50 分考核红皮书指南。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
