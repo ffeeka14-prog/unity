@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { LANDMARKS, Landmark, PhysicalCube } from "../types";
+import { UNITY_TEMPLATES } from "../utils/UnityCodeTemplates";
 import { audioEngine } from "../utils/AudioEngine";
 import { 
   Play, Pause, RefreshCw, Layers, Compass, 
@@ -51,6 +52,23 @@ export default function Campus3DViewer({
   // Unity export and guidance states
   const [showUnityGuide, setShowUnityGuide] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  const downloadTiedaoBuilderScript = () => {
+    const template = UNITY_TEMPLATES.find(t => t.filename === "TiedaoCampusBuilder.cs");
+    if (!template) return;
+    
+    const blob = new Blob([template.code], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "TiedaoCampusBuilder.cs";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    audioEngine.playTriggerSound(523);
+  };
 
   const exportToUnityGLB = () => {
     if (!sceneRef.current) return;
@@ -462,6 +480,7 @@ export default function Campus3DViewer({
       flatShading: false
     });
     const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+    terrain.name = "Floor_Terrain";
     terrain.rotation.x = -Math.PI / 2;
     terrain.position.y = 0;
     terrain.receiveShadow = true;
@@ -469,6 +488,7 @@ export default function Campus3DViewer({
 
     // Realistic ground overlays, roads and walkways
     const floorsGroup = new THREE.Group();
+    floorsGroup.name = "Floor_Ground";
 
     const roadTex = createAsphaltTexture();
     roadTex.repeat.set(1, 15);
@@ -814,6 +834,7 @@ export default function Campus3DViewer({
       depthWrite: false
     });
     const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+    waterMesh.name = "Cui_Ping_Lake_Water";
     waterMesh.rotation.x = -Math.PI / 2;
     waterMesh.position.set(80, 0.4, -10); // Lake position
     scene.add(waterMesh);
@@ -2156,6 +2177,7 @@ export default function Campus3DViewer({
         });
       }
 
+      g.name = lm.id;
       landmarksGroup.add(g);
       landmarkMeshesRef.current[lm.id] = g;
     });
@@ -2264,6 +2286,7 @@ export default function Campus3DViewer({
 
     // --- TIEDAO UNIVERSITY ACTIVE LOOP RAILWAY LINE & MOUNTED CHUGGING TRAIN ---
     const railGroup = new THREE.Group();
+    railGroup.name = "Railway_Track";
 
     const sleepersCount = 140;
     const woodSleeperMat = new THREE.MeshStandardMaterial({ color: "#451a03", roughness: 0.95 });
@@ -3585,6 +3608,17 @@ export default function Campus3DViewer({
             {isExporting ? "正在生成 Unity GLB 文件..." : "导出 Unity 3D 资源 (.GLB)"}
           </button>
 
+          {/* Download One-Click C# Editor script */}
+          <button
+            onClick={downloadTiedaoBuilderScript}
+            className="flex items-center gap-1.5 font-mono text-[11px] font-semibold bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg active:scale-95 transition-all outline-none border-none cursor-pointer"
+            title="一键下载专属于团结引擎/Unity 的 TiedaoCampusBuilder.cs 编辑器自动化场景重建脚本，创建存放于 Assets/Editor 目录下"
+            id="unity-editor-download-btn"
+          >
+            <Download className="w-3.5 h-3.5 text-blue-100" />
+            下载一键搭建脚本 (C#)
+          </button>
+
           <button
             onClick={() => { setShowUnityGuide(!showUnityGuide); audioEngine.playSwitchSound(); }}
             className={`flex items-center gap-1.5 font-mono text-[11px] border px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
@@ -3640,26 +3674,46 @@ export default function Campus3DViewer({
 
               <div className="flex flex-col gap-2.5 mt-2 bg-slate-950 p-4 rounded-xl border border-slate-800/80 font-serif">
                 <div className="flex gap-2.5 items-start">
-                  <span className="font-mono text-[10px] bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded shrink-0">1</span>
-                  <span><strong>拖入项目：</strong> 将下载完的 <code className="text-amber-300 font-mono text-[11px] bg-slate-900 px-1 py-0.5 rounded">Tiedao_University_Campus_3D_Scene.glb</code> 文件直接拖入 Unity/团结引擎的 <code className="text-slate-300 font-mono">Assets</code> 资源面板中。</span>
+                  <span className="font-mono text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded shrink-0">1</span>
+                  <span><strong>下载核心资源：</strong> 导出 <code className="text-amber-300 font-mono text-[11px] bg-slate-900 px-1 py-0.5 rounded">Tiedao_University_Campus_3D_Scene.glb</code> 文件，并点击 <code className="text-blue-300 font-mono text-[11px] bg-slate-900 px-1 py-0.5 rounded">下载一键搭建脚本 (C#)</code> 按钮保存 C# 文件！</span>
                 </div>
                 
                 <div className="flex gap-2.5 items-start border-t border-slate-800/50 pt-2.5">
-                  <span className="font-mono text-[10px] bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded shrink-0">2</span>
-                  <span className="text-left"><strong>启用 GLTF 支持 （推荐）：</strong> Unity 默认支持部分 FBX，若要完全展示精致的法线 (Normal)、散射/漫反射和金属度着色，推荐在 Unity Package Manager 中通过 Git URL 给项目安装官方支持的包：
-                  <code className="block mt-1 font-mono text-[10px] bg-slate-900 text-emerald-400 p-2 rounded break-all select-all">https://github.com/atteneder/glTFast.git</code>
+                  <span className="font-mono text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded shrink-0">2</span>
+                  <span className="text-left"><strong>拖入 Unity 目录对齐：</strong>
+                    <ul className="list-disc pl-4 space-y-1 mt-1 text-[11px] text-slate-300">
+                      <li>在 Unity 的 <code className="text-slate-300 font-mono text-[10px] bg-slate-900 px-1 rounded">Assets/Models/</code> 下放入导出的 <code className="text-amber-300 font-mono">.GLB</code> 校园大文件。</li>
+                      <li>在项目中创建 <code className="text-slate-300 font-mono text-[10px] bg-slate-900 px-1 rounded">Assets/Editor/</code> 目录，并在其中放入下载好的 <code className="text-sky-300 font-mono">TiedaoCampusBuilder.cs</code> 脚本。</li>
+                    </ul>
                   </span>
                 </div>
 
                 <div className="flex gap-2.5 items-start border-t border-slate-800/50 pt-2.5">
-                  <span className="font-mono text-[10px] bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded shrink-0">3</span>
-                  <span><strong>拖入场景：</strong> 在 Assets 中将该模型直接拖拽至您的场景 Hierarchy 树图中。即可立即作为原生 GameObject 运行！</span>
+                  <span className="font-mono text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded shrink-0">3</span>
+                  <span><strong>一键自动组装：</strong> 点击 Unity 顶部新出现的菜单：<strong className="text-amber-400">铁大校园 —&gt; 一键搭建3D环境与交互</strong>。它将全自动清理占位方块，克隆完整三维地理。</span>
                 </div>
 
                 <div className="flex gap-2.5 items-start border-t border-slate-800/50 pt-2.5">
-                  <span className="font-mono text-[10px] bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded shrink-0">4</span>
-                  <span><strong>调整光照材质：</strong> 导入后，双击模型即可查看层级。如果要修改特定物体的砖面或瓦面反光，直接右键对应 Unity Material 选择属性，修改其 Metallic / Roughness、以及对应的 Tiling 即可获得与本页 100% 同比例的 PBR 光影效果！</span>
+                  <span className="font-mono text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded shrink-0">4</span>
+                  <span><strong>直接 Play 畅玩：</strong> 中控器已为您装配好：第一人称漫游（WASD移动，空格跳跃）、铜像观察机位、巡航运镜及多镜头控制器（按数字键 1、2、3 无缝切镜），点击 Play 即可漫游铁大！</span>
                 </div>
+              </div>
+
+              {/* Offline One-Click Script Helper */}
+              <div className="mt-2 bg-blue-950/40 p-4 rounded-xl border border-blue-900/40 font-sans text-[11px] text-blue-200">
+                <p className="font-bold text-white mb-1 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+                  电脑端没有梯子 / 离线运行一键方案：
+                </p>
+                <p className="leading-normal">
+                  我们专为您编写了<span className="text-white font-semibold">【本地项目一键生成系统】</span>！在您本地的网页代码目录下：
+                </p>
+                <div className="bg-slate-950 p-2 rounded-lg my-1.5 font-mono text-[10px] text-emerald-400 select-all border border-slate-800">
+                  双击运行：双击一键生成并打开团结项目.bat
+                </div>
+                <p className="leading-normal">
+                  双击后，它会为您自动创建出完整的 <code className="text-white">TiedaoCampusUnityProject</code>，其中包含了所有 C# 交互、双翼建筑、纪念广场、菲涅尔水体、和【环校移动小火车】！您直接在 <span className="text-white font-semibold">团结Hub (Tuanjie Hub)</span> 内点击【添加】该文件夹即可完美打开，完美解决无梯子供电环境！
+                </p>
               </div>
             </div>
 

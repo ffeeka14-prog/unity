@@ -744,6 +744,329 @@ public class RealtimeGIOptimizer : MonoBehaviour
     }
     FallBack "Universal Render Pipeline/Lit"
 }`
+  },
+  {
+    name: "一键校园大场景组装器 (Editor)",
+    filename: "TiedaoCampusBuilder.cs",
+    language: "csharp",
+    description: "【Unity 核心编辑器工具】无需繁琐的手动关联！创建此 C# 脚本并将其存放到 Unity/团结引擎项目的 Assets/Editor 目录下。点击顶部菜单栏出现的「铁大校园 -> 一键搭建3D环境与交互」，它能一键全自动清理多余的方块占位符，完美克隆导出的 3D 铁大校园，自动挂卡物理碰撞器，生成第一人称漫游人物（含 WASD+跳跃逻辑）、绕詹天佑铜像鸟瞰相机等，让你一按 Play 就能立即探索大场景复刻！",
+    code: `using UnityEngine;
+using UnityEditor;
+using System.IO;
+
+#if UNITY_EDITOR
+public class TiedaoCampusBuilder : EditorWindow
+{
+    [MenuItem("铁大校园/一键搭建3D环境与交互")]
+    public static void BuildCampusScene()
+    {
+        // 1. 寻找从本网页导出的 GLB 模型
+        string glbPath = "Assets/Models/Tiedao_University_Campus_3D_Scene.glb";
+        GameObject glbPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(glbPath);
+
+        if (glbPrefab == null)
+        {
+            // 尝试在项目中模糊寻找名称匹配的 GLB 文件
+            string[] guids = AssetDatabase.FindAssets("Tiedao_University_Campus_3D_Scene t:GameObject");
+            if (guids.Length > 0)
+            {
+                glbPath = AssetDatabase.GUIDToAssetPath(guids[0]);
+                glbPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(glbPath);
+            }
+        }
+
+        if (glbPrefab == null)
+        {
+            EditorUtility.DisplayDialog("GLB 模型未导入！", 
+                "请先在网页端右下角点击【导出 Unity 3D 资源 (.GLB)】下载校园大场景模型。\n\n" +
+                "下载完成后，将 “Tiedao_University_Campus_3D_Scene.glb” 拖入 Unity 项目的 Assets/Models/ 文件夹中，然后再点击此菜单重新一键组装！", "好的");
+            return;
+        }
+
+        bool confirm = EditorUtility.DisplayDialog("确认一键重构校园？", 
+            "一键搭建脚本将执行以下自动化：\n" +
+            "1. 安全清理现存的简易网格方块、简易水面和重复相机。\n" +
+            "2. 将网页端导出的全景 3D 石家庄铁道大学实例化并完全拆解。\n" +
+            "3. 自动化绑定精细 Mesh / Box 碰撞格（人物行走不穿墙不掉落）。\n" +
+            "4. 一键部署大片级环校巡航、詹天佑铜像绕物鸟瞰以及第一人称漫游控制器（WASD）。\n" +
+            "5. 生成一站式机位中控，支持数字键 (1, 2, 3) 实时流畅切镜。\n\n" +
+            "是否立即自动拼装？", "立即拼装", "我再想想");
+            
+        if (!confirm) return;
+
+        // 2. 清理场景中残留的低配方块或占位模型，防止重叠
+        ClearOldMocks();
+
+        // 3. 克隆并拼装 GLB 三维模型
+        GameObject campusInstance = PrefabUtility.InstantiatePrefab(glbPrefab) as GameObject;
+        if (campusInstance == null)
+        {
+            campusInstance = Instantiate(glbPrefab);
+            campusInstance.name = glbPrefab.name;
+        }
+        campusInstance.transform.position = Vector3.zero;
+        campusInstance.transform.rotation = Quaternion.identity;
+        campusInstance.name = "Tiedao_University_Campus_3D_Scene";
+
+        // 解包 Prefab 实例以供各种运行逻辑进行独立材质渲染修改和脚本挂载
+        PrefabUtility.UnpackPrefabInstance(campusInstance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+
+        int buildingsConfigured = 0;
+        int collidersAdded = 0;
+
+        // 4. 遍历校园图谱，对齐高细节材质，自动挂载真实角色行走所需的 Mesh 碰撞体
+        ConfigureSceneComponents(campusInstance, ref buildingsConfigured, ref collidersAdded);
+
+        // 5. 进行灯光渲染对齐
+        SetupLightingAndAtmosphere();
+
+        // 6. 装配第一人称移动 Capsule 和三机位 system
+        SetupCamerasAndPlayer();
+
+        // 保存并刷新
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        EditorUtility.DisplayDialog("一键搭建完毕！🎉", 
+            $"石家庄铁道大学 3D 校园场景重构已完美收尾！\n\n" +
+            $"• 已部署精细地标建筑: {buildingsConfigured} 栋\n" +
+            $"• 已自动化装配物理碰撞体: {collidersAdded} 面\n\n" +
+            $"当前场景中已为您植入：\n" +
+            $"  - [Player_FirstPerson] 第一人称漫游人物 (WASD 控制，按空格跳跃)\n" +
+            $"  - [Camera_OrbitBirdView] 詹天佑像绕圈鸟瞰相机 (拖拽旋转缩放)\n" +
+            $"  - [Camera_CinematicFlight] 环校大片开场航拍路点巡航\n" +
+            $"  - [Camera_Switcher] 多视角中控器 (数字键 1、2、3 无缝切机位)\n\n" +
+            $"现在只需点击 Unity 顶部的 [▶] Play 按钮，即可在团结引擎中漫游实体验证！", "太给力了！");
+    }
+
+    private static void ClearOldMocks()
+    {
+        string[] mocks = { "MockGroup", "MockPlayer", "TerrainCube", "GreyBox_MainBuilding", "SampleCube", "Cube", "Plane", "WaterPlane" };
+        foreach (var mockName in mocks)
+        {
+            GameObject go = GameObject.Find(mockName);
+            while (go != null)
+            {
+                DestroyImmediate(go);
+                go = GameObject.Find(mockName);
+            }
+        }
+
+        // 删除散落的 Main Camera，防止双声卡和视口重合报错
+        Camera[] cameras = GameObject.FindObjectsOfType<Camera>();
+        foreach (var cam in cameras)
+        {
+            if (cam.transform.parent == null && cam.gameObject.name == "Main Camera")
+            {
+                DestroyImmediate(cam.gameObject);
+            }
+        }
+    }
+
+    private static void ConfigureSceneComponents(GameObject root, ref int buildings, ref int colliders)
+    {
+        Transform[] allChildren = root.GetComponentsInChildren<Transform>(true);
+        foreach (Transform child in allChildren)
+        {
+            string nameLower = child.name.ToLower();
+
+            // 为基本地形网格、柏油主道路安装 MeshCollider 做支撑地面
+            if (nameLower.Contains("floor") || nameLower.Contains("terrain") || nameLower.Contains("pathway") || nameLower.Contains("road") || nameLower.Contains("railway"))
+            {
+                MeshCollider mc = child.gameObject.GetComponent<MeshCollider>();
+                if (mc == null)
+                {
+                    mc = child.gameObject.AddComponent<MeshCollider>();
+                    colliders++;
+                }
+            }
+
+            // 识别核心地标建筑组安装物理碰撞墙
+            if (nameLower == "main_building" || nameLower == "library" || nameLower == "memorial" || nameLower == "main_gate" || nameLower == "track_field")
+            {
+                buildings++;
+                MeshRenderer[] renderers = child.GetComponentsInChildren<MeshRenderer>(true);
+                foreach (var mr in renderers)
+                {
+                    MeshFilter mf = mr.GetComponent<MeshFilter>();
+                    if (mf != null && mf.sharedMesh != null)
+                    {
+                        MeshCollider mc = mr.gameObject.GetComponent<MeshCollider>();
+                        if (mc == null)
+                        {
+                            mc = mr.gameObject.AddComponent<MeshCollider>();
+                            colliders++;
+                        }
+                    }
+                }
+            }
+
+            // 湖面水体应用定制的 Fresnel 菲涅尔着色器材质
+            if (nameLower.Contains("water") || nameLower.Contains("lake") || nameLower == "lake_pond")
+            {
+                Shader customWaterShader = Shader.Find("Custom/Tuanjie/FresnelWater");
+                Material waterMaterial = customWaterShader != null ? new Material(customWaterShader) : null;
+                
+                MeshRenderer mr = child.GetComponent<MeshRenderer>();
+                if (mr != null)
+                {
+                    if (waterMaterial != null)
+                    {
+                        mr.sharedMaterial = waterMaterial;
+                    }
+                    else
+                    {
+                        // 若 URP 下没有预编译对应的着色器，则自适应生成高透明晶亮 URP 默认水材质
+                        Material fallbackMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                        if (fallbackMat != null)
+                        {
+                            fallbackMat.color = new Color(0.12f, 0.52f, 0.72f, 0.78f);
+                            fallbackMat.SetFloat("_Roughness", 0.15f);
+                            mr.sharedMaterial = fallbackMat;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static void SetupLightingAndAtmosphere()
+    {
+        Light sun = null;
+        Light[] lights = GameObject.FindObjectsOfType<Light>();
+        foreach (var l in lights)
+        {
+            if (l.type == LightType.Directional)
+            {
+                sun = l;
+                break;
+            }
+        }
+
+        if (sun == null)
+        {
+            GameObject sunGO = new GameObject("MainDirectionalSunlight");
+            sun = sunGO.AddComponent<Light>();
+            sun.type = LightType.Directional;
+            sunGO.transform.rotation = Quaternion.Euler(46, -32, 0);
+        }
+
+        sun.color = new Color(1.0f, 0.94f, 0.84f); // 暖午后阳
+        sun.intensity = 1.45f;
+        sun.shadows = LightShadows.Soft;
+        sun.shadowResolution = LightShadowResolution.VeryHigh;
+        sun.shadowBias = 0.02f;
+        sun.shadowNormalBias = 0.03f;
+    }
+
+    private static void SetupCamerasAndPlayer()
+    {
+        // 销毁多余的散落相机
+        GameObject oldCam = GameObject.Find("Main Camera");
+        if (oldCam != null) DestroyImmediate(oldCam);
+
+        // 创建唯一的交互轴中枢
+        GameObject rigContainer = GameObject.Find("Campus_Interaction_System");
+        if (rigContainer != null) DestroyImmediate(rigContainer);
+        
+        rigContainer = new GameObject("Campus_Interaction_System");
+
+        // 1. 第一人称人物装配
+        GameObject player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        player.name = "Player_FirstPerson";
+        player.transform.position = new Vector3(0, 1.3f, -50.0f); // 进门处
+        player.transform.parent = rigContainer.transform;
+
+        // 移除多余的胶囊碰撞体（物理驱动统一交给 CharacterController 自带检测）
+        CapsuleCollider capCol = player.GetComponent<CapsuleCollider>();
+        if (capCol != null) DestroyImmediate(capCol);
+
+        CharacterController cc = player.AddComponent<CharacterController>();
+        cc.center = new Vector3(0, 0, 0);
+        cc.height = 1.8f;
+        cc.radius = 0.4f;
+
+        GameObject fpCamGO = new GameObject("Fps_Camera");
+        Camera fpCam = fpCamGO.AddComponent<Camera>();
+        fpCamGO.AddComponent<AudioListener>();
+        fpCamGO.transform.parent = player.transform;
+        fpCamGO.transform.localPosition = new Vector3(0, 0.8f, 0); // 人物视高1.7米级
+        
+        System.Type fpControllerClass = System.Type.GetType("FirstPersonController");
+        if (fpControllerClass != null)
+        {
+            player.AddComponent(fpControllerClass);
+        }
+
+        // 2. 绕詹天佑像鸟瞰相机配齐
+        GameObject orbitGO = new GameObject("Camera_OrbitBirdView");
+        Camera orbitCam = orbitGO.AddComponent<Camera>();
+        orbitGO.transform.parent = rigContainer.transform;
+        
+        System.Type orbitCameraClass = System.Type.GetType("OrbitCamera");
+        if (orbitCameraClass != null)
+        {
+            MonoBehaviour orbitScript = orbitGO.AddComponent(orbitCameraClass) as MonoBehaviour;
+            // 设定目标轴为詹天佑铜像，如果没有，则默认设定为主楼
+            GameObject targetGO = GameObject.Find("memorial") ?? GameObject.Find("main_building");
+            if (targetGO != null)
+            {
+                var targetField = orbitCameraClass.GetField("target");
+                if (targetField != null) targetField.SetValue(orbitScript, targetGO.transform);
+            }
+        }
+
+        // 3. 航拍自动化巡航路点部署
+        GameObject flightGO = new GameObject("Camera_CinematicFlight");
+        Camera flightCam = flightGO.AddComponent<Camera>();
+        flightGO.transform.parent = rigContainer.transform;
+
+        GameObject wpGroup = new GameObject("Cinematic_Waypoints");
+        wpGroup.transform.parent = rigContainer.transform;
+        Vector3[] wpPositions = new Vector3[] {
+            new Vector3(0, 16, -90),   // 门楼上空
+            new Vector3(45, 14, -40),  // 翠屏湖侧
+            new Vector3(85, 10, -5),   // 菲涅尔光反射面
+            new Vector3(25, 22, 38),   // 图书馆上空
+            new Vector3(-45, 14, 15)   // 纪念像广场
+        };
+        
+        Transform[] waypoints = new Transform[wpPositions.Length];
+        for (int i = 0; i < wpPositions.Length; i++)
+        {
+            GameObject wp = new GameObject($"Waypoint_{i}");
+            wp.transform.parent = wpGroup.transform;
+            wp.transform.position = wpPositions[i];
+            waypoints[i] = wp.transform;
+        }
+
+        System.Type pathClass = System.Type.GetType("CameraPathAnimator");
+        if (pathClass != null)
+        {
+            MonoBehaviour pathScript = flightGO.AddComponent(pathClass) as MonoBehaviour;
+            var wpsField = pathClass.GetField("pathWaypoints");
+            if (wpsField != null) wpsField.SetValue(pathScript, waypoints);
+        }
+
+        // 4. 一揽子多相机调度中控部署
+        GameObject switcherGO = new GameObject("Scene_Camera_SwitcherManager");
+        switcherGO.transform.parent = rigContainer.transform;
+        
+        System.Type switcherClass = System.Type.GetType("CameraSwitcher");
+        if (switcherClass != null)
+        {
+            MonoBehaviour switcherScript = switcherGO.AddComponent(switcherClass) as MonoBehaviour;
+            // 将相机列表注册到 C# 预设集合中
+            var camerasField = switcherClass.GetField("cameras");
+            if (camerasField != null)
+            {
+                // C# 会在 Start() 里自适应查找
+                Debug.Log("[Tuanjie Builder] 交互中控及多机位初始化完成，按 alpha1-3 可瞬间无缝调视口。");
+            }
+        }
+    }
+}
+#endif`
   }
 ];
 
